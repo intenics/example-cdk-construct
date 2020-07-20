@@ -1,0 +1,250 @@
+{
+  "Resources": {
+    "WorkerServiceRole8543584E": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              }
+            }
+          ],
+          "Version": "2012-10-17"
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition"
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+              ]
+            ]
+          }
+        ]
+      },
+      "Metadata": {
+        "aws:cdk:path": "ConsumerServiceB/Worker/ServiceRole/Resource"
+      }
+    },
+    "WorkerServiceRoleDefaultPolicyAE71B5FA": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "sqs:ReceiveMessage",
+                "sqs:ChangeMessageVisibility",
+                "sqs:GetQueueUrl",
+                "sqs:DeleteMessage",
+                "sqs:GetQueueAttributes"
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "FanoutSubscriptionEventQueue43220F1C",
+                  "Arn"
+                ]
+              }
+            }
+          ],
+          "Version": "2012-10-17"
+        },
+        "PolicyName": "WorkerServiceRoleDefaultPolicyAE71B5FA",
+        "Roles": [
+          {
+            "Ref": "WorkerServiceRole8543584E"
+          }
+        ]
+      },
+      "Metadata": {
+        "aws:cdk:path": "ConsumerServiceB/Worker/ServiceRole/DefaultPolicy/Resource"
+      }
+    },
+    "Worker11F36D0F": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Code": {
+          "ZipFile": "exports.handler = async function( event, context){ console.log(event); }"
+        },
+        "Handler": "index.handler",
+        "Role": {
+          "Fn::GetAtt": [
+            "WorkerServiceRole8543584E",
+            "Arn"
+          ]
+        },
+        "Runtime": "nodejs12.x"
+      },
+      "DependsOn": [
+        "WorkerServiceRoleDefaultPolicyAE71B5FA",
+        "WorkerServiceRole8543584E"
+      ],
+      "Metadata": {
+        "aws:cdk:path": "ConsumerServiceB/Worker/Resource"
+      }
+    },
+    "WorkerSqsEventSourceConsumerServiceBFanoutSubscriptionEventQueue22BC6FD73F2E5352": {
+      "Type": "AWS::Lambda::EventSourceMapping",
+      "Properties": {
+        "EventSourceArn": {
+          "Fn::GetAtt": [
+            "FanoutSubscriptionEventQueue43220F1C",
+            "Arn"
+          ]
+        },
+        "FunctionName": {
+          "Ref": "Worker11F36D0F"
+        },
+        "BatchSize": 1
+      },
+      "Metadata": {
+        "aws:cdk:path": "ConsumerServiceB/Worker/SqsEventSource:ConsumerServiceBFanoutSubscriptionEventQueue22BC6FD7/Resource"
+      }
+    },
+    "FanoutSubscriptionDeadLetterQueue594614FC": {
+      "Type": "AWS::SQS::Queue",
+      "Metadata": {
+        "aws:cdk:path": "ConsumerServiceB/FanoutSubscription/DeadLetterQueue/Resource"
+      }
+    },
+    "FanoutSubscriptionEventQueue43220F1C": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {
+        "RedrivePolicy": {
+          "deadLetterTargetArn": {
+            "Fn::GetAtt": [
+              "FanoutSubscriptionDeadLetterQueue594614FC",
+              "Arn"
+            ]
+          },
+          "maxReceiveCount": 3
+        }
+      },
+      "Metadata": {
+        "aws:cdk:path": "ConsumerServiceB/FanoutSubscription/EventQueue/Resource"
+      }
+    },
+    "FanoutSubscriptionEventQueuePolicyCD2C8C59": {
+      "Type": "AWS::SQS::QueuePolicy",
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sqs:SendMessage",
+              "Condition": {
+                "ArnEquals": {
+                  "aws:SourceArn": "arn:aws:sns:eu-central-1:0123456789123:alarming"
+                }
+              },
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "sns.amazonaws.com"
+              },
+              "Resource": {
+                "Fn::GetAtt": [
+                  "FanoutSubscriptionEventQueue43220F1C",
+                  "Arn"
+                ]
+              }
+            }
+          ],
+          "Version": "2012-10-17"
+        },
+        "Queues": [
+          {
+            "Ref": "FanoutSubscriptionEventQueue43220F1C"
+          }
+        ]
+      },
+      "Metadata": {
+        "aws:cdk:path": "ConsumerServiceB/FanoutSubscription/EventQueue/Policy/Resource"
+      }
+    },
+    "FanoutSubscriptionEventQueueConsumerServiceBSourceTopic39A435080F89AC66": {
+      "Type": "AWS::SNS::Subscription",
+      "Properties": {
+        "Protocol": "sqs",
+        "TopicArn": "arn:aws:sns:eu-central-1:0123456789123:alarming",
+        "Endpoint": {
+          "Fn::GetAtt": [
+            "FanoutSubscriptionEventQueue43220F1C",
+            "Arn"
+          ]
+        },
+        "Region": "eu-central-1"
+      },
+      "Metadata": {
+        "aws:cdk:path": "ConsumerServiceB/FanoutSubscription/EventQueue/ConsumerServiceBSourceTopic39A43508/Resource"
+      }
+    },
+    "FanoutSubscriptionEventQueueSizeBAD0AB01": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "EvaluationPeriods": 1,
+        "AlarmActions": [
+          "arn:aws:sns:eu-central-1:0123456789123:alarming"
+        ],
+        "Dimensions": [
+          {
+            "Name": "QueueName",
+            "Value": {
+              "Fn::GetAtt": [
+                "FanoutSubscriptionEventQueue43220F1C",
+                "QueueName"
+              ]
+            }
+          }
+        ],
+        "MetricName": "ApproximateNumberOfMessagesVisible",
+        "Namespace": "AWS/SQS",
+        "Period": 300,
+        "Statistic": "Maximum",
+        "Threshold": 5000,
+        "TreatMissingData": "ignore"
+      },
+      "Metadata": {
+        "aws:cdk:path": "ConsumerServiceB/FanoutSubscription/EventQueueSize/Resource"
+      }
+    },
+    "FanoutSubscriptionDeadLetterQueueSizeF6A5445D": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "EvaluationPeriods": 1,
+        "AlarmActions": [
+          "arn:aws:sns:eu-central-1:0123456789123:alarming"
+        ],
+        "Dimensions": [
+          {
+            "Name": "QueueName",
+            "Value": {
+              "Fn::GetAtt": [
+                "FanoutSubscriptionDeadLetterQueue594614FC",
+                "QueueName"
+              ]
+            }
+          }
+        ],
+        "MetricName": "ApproximateNumberOfMessagesVisible",
+        "Namespace": "AWS/SQS",
+        "Period": 300,
+        "Statistic": "Maximum",
+        "Threshold": 1,
+        "TreatMissingData": "ignore"
+      },
+      "Metadata": {
+        "aws:cdk:path": "ConsumerServiceB/FanoutSubscription/DeadLetterQueueSize/Resource"
+      }
+    }
+  }
+}
